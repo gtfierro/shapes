@@ -47,8 +47,8 @@
     sh:qualifiedMinCount 1 ;
 .
 :zone-temperature2 a sh:PropertyShape ;
-    sh:path [ sh:oneOrMorePath brick:feeds ] ;
-    sh:qualifiedValueShape [ sh:node :zone-with-temp-sensor ] ;
+    sh:path ( [ sh:oneOrMorePath brick:feeds ] [ sh:zeroOrOnePath brick:hasPart ) ;
+    sh:qualifiedValueShape [ sh:or ( :zone-with-temp-sensor :room-with-temp-sensor ) ] ;
     sh:qualifiedMinCount 1 ;
 .
 :zone-with-temp-sensor a sh:NodeShape ;
@@ -58,6 +58,13 @@
         sh:qualifiedValueShape [ sh:class brick:Zone_Air_Temperature_Sensor ] ;
     ] ;
 .
+:room-with-temp-sensor a sh:NodeShape ;
+    sh:targetClass brick:Room ;
+    sh:property [
+        sh:path brick:hasPoint ;
+        sh:qualifiedValueShape [ sh:class brick:Temperature_Sensor ] ;
+    ] ;
+.
 
 :occupancy-sensor1 a sh:PropertyShape ;
     sh:path brick:hasPoint ;
@@ -65,7 +72,7 @@
     sh:qualifiedMinCount 0 ;
 .
 :occupancy-sensor2 a sh:PropertyShape ;
-    sh:path [ sh:oneOrMorePath brick:feeds ] ;
+    sh:path ( [ sh:oneOrMorePath brick:feeds ] [ sh:zeroOrOnePath brick:hasPart ) ;
     sh:qualifiedValueShape [ sh:or ( :zone-with-occ-sensor :room-with-occ-sensor ) ] ;
     sh:qualifiedMinCount 0 ;
 .
