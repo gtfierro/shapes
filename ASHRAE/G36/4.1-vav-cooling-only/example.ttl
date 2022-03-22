@@ -1,0 +1,14 @@
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix brick: <https://brickschema.org/schema/Brick#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix g36: <urn:ashrae/g36/4.1/vav-cooling-only/> .
+@prefix : <urn:bldg#> .
+
+:vav1 a brick:VAV  ;
+    brick:hasPoint :dmppos1, :daf1, :zat1 ;
+.
+
+:dmppos1 a brick:Damper_Position_Command .
+:daf1 a brick:Discharge_Air_Flow_Sensor .
+:zat1 a brick:Zone_Air_Temperature_Sensor .
