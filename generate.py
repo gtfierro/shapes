@@ -1,8 +1,10 @@
 import os
+import ontoenv
 from rdflib import Namespace, URIRef
 import brickschema
 import brickschema.namespaces as ns
 
+env = ontoenv.OntoEnv()
 ruleGraph = brickschema.Graph()
 allShapes = brickschema.Graph()
 ontologies = []
@@ -29,6 +31,7 @@ def find_ttl_files(path):
 for filename in find_ttl_files("."):
     g = brickschema.Graph()
     g.load_file(filename)
+    env.import_dependencies(g)
 
     ontology = next(iter(g.subjects(ns.RDF.type, ns.OWL.Ontology)))
     ontologies.append(ontology)
@@ -39,10 +42,12 @@ for filename in find_ttl_files("."):
     for shape in g.subjects(predicate=ns.RDF.type, object=ns.SH.NodeShape):
         rule = RULE[str(shape).split(":")[-1]]
         ruleGraph.add((rule, ns.RDF.type, ns.SH.NodeShape))
-        targetClasses = list(g.objects(subject=shape, predicate=ns.SH["class"]))
+        targetClasses = list(g.query(f"""SELECT ?type WHERE {{
+            <{shape}> rdfs:subClassOf*/sh:class ?type .
+        }}"""))
         if not targetClasses:
             continue
-        ruleGraph.add((rule, ns.SH.targetClass, targetClasses[0]))
+        ruleGraph.add((rule, ns.SH.targetClass, targetClasses[0][0]))
         ruleGraph.add((rule, ns.SH.rule, [
             (ns.SH.condition, shape),
             (ns.RDF.type, ns.SH.TripleRule),
