@@ -10,7 +10,7 @@
     owl:imports <urn:ashrae/g36/4.1/vav-cooling-only> ;
 .
 
-:vav-with-reheat a sh:NodeShape ;
+:vav-with-reheat a sh:NodeShape, owl:Class ;
     rdfs:subClassOf vav41:vav-cooling-only ;
     sh:or ( :heating-signal1 :heating-signal2 ) ;
 .
@@ -26,7 +26,7 @@
     sh:qualifiedMinCount 1 ;
     sh:qualifiedValueShape [ 
         sh:node [
-            sh:targetClass brick:Heating_Coil ;
+            sh:class brick:Heating_Coil ;
             sh:property [
                 sh:qualifiedMinCount 1 ;
                 sh:qualifiedValueShape [ sh:class brick:Position_Command ] ;

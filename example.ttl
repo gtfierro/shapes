@@ -5,8 +5,9 @@
 @prefix g36: <urn:ashrae/g36/4.1/vav-cooling-only/> .
 @prefix : <urn:bldg#> .
 
-:vav1 a brick:VAV  ;
+:vav1 a brick:VAV, g36:vav-cooling-only ;
     brick:hasPoint :dmppos1, :daf1, :zat1 ;
+
 .
 
 :dmppos1 a brick:Damper_Position_Command .
