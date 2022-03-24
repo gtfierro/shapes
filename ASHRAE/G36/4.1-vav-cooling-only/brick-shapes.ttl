@@ -10,10 +10,10 @@
 :vav-cooling-only a sh:NodeShape, owl:Class ;
     sh:class brick:VAV ;
     sh:or ( :box-damper-position1 :box-damper-position2 ) ;
-    sh:property :discharge-airflow, :window-switch ;
     sh:or ( :zone-temperature1 :zone-temperature2 ) ;
     sh:or ( :occupancy-sensor1 :occupancy-sensor2 ) ;
     sh:or ( :zone-co2-level1 :zone-co2-level2 ) ;
+    sh:property :discharge-airflow, :window-switch ;
 .
 
 

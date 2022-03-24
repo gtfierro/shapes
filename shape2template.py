@@ -129,8 +129,9 @@ class Context:
         self.templates[name].append(template)
 
     def to_dict(self):
-        res = {}
+        res = []
         for name, templates in self.templates.items():
+            name = name.split("#")[-1]
             for template in templates:
                 tg = rdflib.Graph()
                 tg.parse(data=__header__ + template, format="turtle")
@@ -138,10 +139,12 @@ class Context:
                 for p in params:
                     template = template.replace(f"<{p}>", f"{{{p.replace(MARK, '')}}}")
                 params = [node.replace(MARK, "") for node in params]
-                res[name] = {
-                    "body": template,
-                    "params": params
-                }
+                res.append({
+                    name: {
+                        "body": template,
+                        "head": params
+                    }
+                })
         return res
 
 
@@ -306,5 +309,7 @@ if __name__ == "__main__":
     #         print(name)
     #         for template in templist:
     #             print(template)
-    from pprint import pprint
-    pprint(ctx.to_dict())
+    ctx.to_dict()
+
+    import yaml
+    print(yaml.dump(ctx.to_dict()))
