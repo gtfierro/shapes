@@ -1,4 +1,5 @@
 import rdflib
+from brickschema.namespaces import bind_prefixes
 from collections import defaultdict
 from rdflib.collection import Collection
 from functools import cached_property
@@ -9,6 +10,12 @@ from secrets import token_hex
 SH = rdflib.Namespace("http://www.w3.org/ns/shacl#")
 MARK = rdflib.Namespace("urn:___mark___#")
 
+__header__ = """
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+"""
 
 def gensym(prefix: str) -> str:
     """
@@ -70,6 +77,9 @@ class Context:
     def __init__(self, graph: rdflib.Graph):
         self.g = graph
         self.templates = defaultdict(list)
+        for root in self.root_shapes:
+            for generated in self.generate_template(root):
+                self.templates[root].append(generated)
 
     @staticmethod
     def from_file(filename: str) -> 'Context':
@@ -118,33 +128,57 @@ class Context:
         """
         self.templates[name].append(template)
 
-    def generate_template(self, shape: rdflib.URIRef) -> str:
+    def to_dict(self):
+        res = {}
+        for name, templates in self.templates.items():
+            for template in templates:
+                tg = rdflib.Graph()
+                tg.parse(data=__header__ + template, format="turtle")
+                params = [str(node) for node in tg.all_nodes() if str(node).startswith(MARK)]
+                for p in params:
+                    template = template.replace(f"<{p}>", f"{{{p.replace(MARK, '')}}}")
+                params = [node.replace(MARK, "") for node in params]
+                res[name] = {
+                    "body": template,
+                    "params": params
+                }
+        return res
+
+
+    def generate_template(self, shape: rdflib.URIRef) -> List[str]:
         """
         Generate a template for a given node shape
         """
         parameters = []
         dependencies = []
-        generated_shape = ""
+        generated_shapes = [""]
         g = self.g.cbd(shape)
         # get the type or target
+        param = gensym("param")
         for type_prop in [SH.targetClass, SH.targetNode, SH["class"]]:
             if type_prop in g.predicates(subject=shape):
                 type_ = g.value(subject=shape, predicate=type_prop)
-                param = gensym("param")
-                generated_shape += f"<{param}> rdf:type <{type_}> .\n"
+                generated_shapes = _add_to_list(generated_shapes, f"<{param}> rdf:type <{type_}> .\n")
                 parameters.append(param)
                 # handle dependencies if SH.targetNode
                 if type_prop == SH.targetNode:
                     dependencies.append((param, type_))
                 break
+        # handle 'or's
+        if SH["or"] in g.predicates(subject=shape):
+            _types = self._handle_node_shape_list(shape, root=param)
+            for _type in _types:
+                # TODO: need 'or' these together
+                generated_shapes = _cross_product(generated_shapes, self.templates[_type])
         # handle properties
         for prop_shape in g.objects(subject=shape, predicate=SH.property):
             assert isinstance(prop_shape, (rdflib.URIRef, rdflib.BNode))
             # assumes the shape parameter is the first parameter we generated
-            generated_prop_shape, prop_params = self._prop_shape_to_template(parameters[0], prop_shape)
+            generated_prop_shapes, prop_params = self._prop_shape_to_template(parameters[0], prop_shape)
+            for prop_template in generated_prop_shapes:
+                generated_shapes = _add_to_list(generated_shapes, prop_template)
             parameters.extend(prop_params)
-            generated_shape += generated_prop_shape
-        return generated_shape
+        return generated_shapes
 
     def _path_to_template(self, path: rdflib.URIRef, ps: Optional[PathSet] = None) -> PathSet:
         """
@@ -153,12 +187,9 @@ class Context:
         sg = self.g.cbd(path)
         if ps is None:
             ps = PathSet()
-
         if len(sg) == 0: # a single property
             return ps.then(path)
-
         # otherwise, interpret the path
-
         # list of paths
         if (path, rdflib.RDF.first, None) in sg:
             parts = Collection(sg, path)
@@ -189,7 +220,7 @@ class Context:
         Generate a template for a given property shape
         """
         parameters = []
-        generated_shape = ""
+        generated_shapes = [""]
         pg = self.g.cbd(prop_shape)
         path = pg.value(subject=prop_shape, predicate=SH.path)
         path = self._path_to_template(path)
@@ -198,23 +229,28 @@ class Context:
         path_templates = path.paths(root_param)[0]
         path, last = path_templates[0][0], path_templates[1]
 
-        generated_shape += path
+        generated_shapes = _add_to_list(generated_shapes, path)
         if SH["class"] in pg.predicates(subject=prop_shape):
             type_ = pg.value(subject=prop_shape, predicate=SH["class"])
-            generated_shape += f"<{last}> rdf:type <{type_}> .\n"
+            generated_shapes = _add_to_list(generated_shapes, f"<{last}> rdf:type <{type_}> .\n")
         elif SH["qualifiedValueShape"] in pg.predicates(subject=prop_shape):
             qvs = pg.value(subject=prop_shape, predicate=SH["qualifiedValueShape"])
             type_ = pg.value(subject=qvs, predicate=SH["class"])
-            if type_ is None:
+            if type_ is not None:
+                generated_shapes = _add_to_list(generated_shapes, f"<{last}> rdf:type <{type_}> .\n")
+            else:
                 type_ = pg.value(subject=qvs, predicate=SH["node"])
-                if type_ is None:
+                if type_ is not None:
+                    generated_shapes = _add_to_list(generated_shapes, f"<{last}> rdf:type <{type_}> .\n")
+                else:
                     # TODO: use _handle_node_shape_list (returns multiple)
-                    type_ = self._handle_node_shape_list(qvs, name=prop_shape.split('/')[-1])
-            generated_shape += f"<{last}> rdf:type <{type_}> .\n"
+                    types_ = self._handle_node_shape_list(qvs)
+                    for type_ in types_:
+                        generated_shapes = _add_to_list(generated_shapes, f"<{last}> rdf:type <{type_}> .\n")
 
-        return generated_shape, parameters
+        return generated_shapes, parameters
 
-    def _handle_node_shape_list(self, shape: rdflib.URIRef, name: Optional[str]) -> List[str]:
+    def _handle_node_shape_list(self, shape: Union[rdflib.BNode, rdflib.URIRef], root: Optional[str] = None) -> List[str]:
         """
         Returns the list of template names for each list of alternate node shapes
         """
@@ -222,11 +258,38 @@ class Context:
         # for each list, create a set of templates with the same name
         templates = []
         for list_ in lists:
-            name = gensym(name if name else shape.split('/')[-1])
+            name = gensym("shape_list")
             templates.append(name)
             for item in list_:
-                self.add_template(name, self.generate_template(item))
+                if (item, rdflib.RDF.type, SH.NodeShape) in self.g:
+                    for generated in self.generate_template(item):
+                        self.add_template(name, generated)
+                        print(f"{name}:\n{generated}")
+                elif (item, rdflib.RDF.type, SH.PropertyShape) in self.g:
+                    root = gensym("prop_shape") if root is None else root
+                    print("ITEM", item)
+                    generated_shapes, params = self._prop_shape_to_template(root, item)
+                    _ = params
+                    for generated in generated_shapes:
+                        self.add_template(name, generated)
+                        print(f"{name}:\n{generated}")
+                    pass
+
         return templates
+
+
+def _add_to_list(list_, suffix):
+    """
+    Add a suffix to the end of each item in a list
+    """
+    return [f"{item}{suffix}" for item in list_]
+
+
+def _cross_product(list_a, list_b):
+    """
+    Return the cross product of two lists
+    """
+    return [f"{a}{b}" for a in list_a for b in list_b]
 
 
 if __name__ == "__main__":
@@ -236,9 +299,12 @@ if __name__ == "__main__":
     for shape in ctx.root_shapes:
         print()
         print(shape)
-        print(ctx.generate_template(shape))
-        for name, templist in ctx.templates.items():
-            print('*' * 80)
-            print(name)
-            for template in templist:
-                print(template)
+        for generated in ctx.generate_template(shape):
+            print(generated)
+    #     for name, templist in ctx.templates.items():
+    #         print('*' * 80)
+    #         print(name)
+    #         for template in templist:
+    #             print(template)
+    from pprint import pprint
+    pprint(ctx.to_dict())
