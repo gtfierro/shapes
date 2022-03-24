@@ -1,8 +1,9 @@
 import rdflib
+from collections import defaultdict
 from rdflib.collection import Collection
 from functools import cached_property
 from itertools import chain
-from typing import List, Tuple, Set, Optional
+from typing import List, Tuple, Set, Optional, Union
 from secrets import token_hex
 
 SH = rdflib.Namespace("http://www.w3.org/ns/shacl#")
@@ -67,6 +68,7 @@ class Context:
     """
     def __init__(self, graph: rdflib.Graph):
         self.g = graph
+        self.templates = defaultdict(list)
 
     @staticmethod
     def from_file(filename: str) -> 'Context':
@@ -118,6 +120,12 @@ class Context:
         """
         pass
 
+    def add_template(self, name: str, template: str):
+        """
+        Add a template to the context
+        """
+        self.templates[name].append(template)
+
     def generate_template(self, shape: rdflib.URIRef) -> str:
         """
         Generate a template for a given shape
@@ -139,7 +147,7 @@ class Context:
                 break
         # handle properties
         for prop_shape in g.objects(subject=shape, predicate=SH.property):
-            assert isinstance(prop_shape, rdflib.URIRef)
+            assert isinstance(prop_shape, (rdflib.URIRef, rdflib.BNode))
             # assumes the shape parameter is the first parameter we generated
             generated_prop_shape, prop_params = self._prop_shape_to_template(parameters[0], prop_shape)
             parameters.extend(prop_params)
@@ -184,7 +192,7 @@ class Context:
             return ps
         return ps
 
-    def _prop_shape_to_template(self, root_param: str, prop_shape: rdflib.URIRef):
+    def _prop_shape_to_template(self, root_param: str, prop_shape: Union[rdflib.URIRef, rdflib.BNode]):
         """
         Generate a template for a given property shape
         """
@@ -193,9 +201,6 @@ class Context:
         pg = self.g.cbd(prop_shape)
         path = pg.value(subject=prop_shape, predicate=SH.path)
         path = self._path_to_template(path)
-        # now have a sequence of paths
-        # param = gensym("param")
-        # parameters.append(param)
 
         # TODO: handle the 'split' if there are multiple
         path_templates = path.paths(root_param)[0]
@@ -210,8 +215,26 @@ class Context:
             type_ = pg.value(subject=qvs, predicate=SH["class"])
             if type_ is None:
                 type_ = pg.value(subject=qvs, predicate=SH["node"])
+                if type_ is None:
+                    # TODO: use _handle_node_shape_list (returns multiple)
+                    type_ = self._handle_node_shape_list(qvs, name=prop_shape.split('/')[-1])
             generated_shape += f"{last} rdf:type {type_} .\n"
+
         return generated_shape, parameters
+
+    def _handle_node_shape_list(self, shape: rdflib.URIRef, name: Optional[str]) -> List[str]:
+        """
+        Returns the list of template names for each list of alternate node shapes
+        """
+        lists = [Collection(self.g, or_) for or_ in self.g.objects(subject=shape, predicate=SH["or"])]
+        # for each list, create a set of templates with the same name
+        templates = []
+        for list_ in lists:
+            name = gensym(name if name else shape.split('/')[-1])
+            templates.append(name)
+            for item in list_:
+                self.add_template(name, self.generate_template(item))
+        return templates
 
 
 if __name__ == "__main__":
@@ -222,3 +245,8 @@ if __name__ == "__main__":
         print()
         print(shape)
         print(ctx.generate_template(shape))
+        for name, templist in ctx.templates.items():
+            print('*' * 80)
+            print(name)
+            for template in templist:
+                print(template)
