@@ -1,7 +1,8 @@
 import rdflib
 from rdflib.collection import Collection
 from functools import cached_property
-from typing import List, Any, Set
+from itertools import chain
+from typing import List, Tuple, Set, Optional
 from secrets import token_hex
 
 SH = rdflib.Namespace("http://www.w3.org/ns/shacl#")
@@ -18,6 +19,15 @@ class PathSet:
     def __init__(self):
         self.sequence: List[rdflib.URIRef] = []
         self.options: Set[PathSet] = set()
+
+    def __repr__(self):
+        s = "PathSet(\n"
+        for p in self.sequence:
+            s += f" {p}\n"
+        for o in self.options:
+            s += f" {o}\n|\n"
+        return s + ")"
+
 
     def then(self, path: rdflib.URIRef) -> "PathSet":
         """
@@ -38,6 +48,17 @@ class PathSet:
         n.options.add(self)
         n.options.add(other)
         return n
+
+    def paths(self, start) -> List[Tuple[List[str], str]]:
+        if len(self.options) > 0:
+            return chain.from_iterable(p.paths() for p in self.options)
+        last = start
+        temp = ""
+        for step in self.sequence:
+            temp += f"{last} "
+            last = gensym("autogen")
+            temp += f"<{step}> {last} .\n"
+        return [([temp], last)]
 
 
 class Context:
@@ -106,7 +127,6 @@ class Context:
         generated_shape = ""
         g = self.g.cbd(shape)
         # get the type or target
-        print(g.serialize(format="turtle"))
         for type_prop in [SH.targetClass, SH.targetNode, SH["class"]]:
             if type_prop in g.predicates(subject=shape):
                 type_ = g.value(subject=shape, predicate=type_prop)
@@ -124,41 +144,45 @@ class Context:
             generated_prop_shape, prop_params = self._prop_shape_to_template(parameters[0], prop_shape)
             parameters.extend(prop_params)
             generated_shape += generated_prop_shape
-        print(parameters)
         return generated_shape
 
-    def _path_to_template(self, path: rdflib.URIRef) -> List[Any]:
+    def _path_to_template(self, path: rdflib.URIRef, ps: Optional[PathSet] = None) -> PathSet:
         """
         Generate a template for a path object
         """
         sg = self.g.cbd(path)
+        if ps is None:
+            ps = PathSet()
+
         if len(sg) == 0: # a single property
-            return [path]
+            return ps.then(path)
 
         # otherwise, interpret the path
 
         # list of paths
         if (path, rdflib.RDF.first, None) in sg:
             parts = Collection(sg, path)
-            paths = [[self._path_to_template(part)] for part in parts]
-            return paths
+            for part in parts:
+                ps = self._path_to_template(part, ps)
+            return ps
 
+        # treat all of these the same for now
         res = sg.value(subject=path, predicate=SH.zeroOrMorePath)
         if res is not None:
-            return self._path_to_template(res)
+            return self._path_to_template(res, ps)
         res = sg.value(subject=path, predicate=SH.oneOrMorePath)
         if res is not None:
-            return self._path_to_template(res)
+            return self._path_to_template(res, ps)
         res = sg.value(subject=path, predicate=SH.zeroOrOnePath)
         if res is not None:
-            return self._path_to_template(res)
+            return self._path_to_template(res, ps)
         res = sg.value(subject=path, predicate=SH.alternativePath)
         if res is not None:
             parts = Collection(sg, res)
-            paths = [[self._path_to_template(part)] for part in parts]
-            return paths
-
-        return [path]
+            for part in parts:
+                ps = self._path_to_template(part, ps)
+            return ps
+        return ps
 
     def _prop_shape_to_template(self, root_param: str, prop_shape: rdflib.URIRef):
         """
@@ -170,20 +194,23 @@ class Context:
         path = pg.value(subject=prop_shape, predicate=SH.path)
         path = self._path_to_template(path)
         # now have a sequence of paths
-        if len(path) > 1:
-            pass
-        param = gensym("param")
-        parameters.append(param)
-        generated_shape += f"{root_param} {path} {param} .\n"
+        # param = gensym("param")
+        # parameters.append(param)
+
+        # TODO: handle the 'split' if there are multiple
+        path_templates = path.paths(root_param)[0]
+        path, last = path_templates[0][0], path_templates[1]
+
+        generated_shape += path
         if SH["class"] in pg.predicates(subject=prop_shape):
             type_ = pg.value(subject=prop_shape, predicate=SH["class"])
-            generated_shape += f"{param} rdf:type {type_} .\n"
+            generated_shape += f"{last} rdf:type {type_} .\n"
         elif SH["qualifiedValueShape"] in pg.predicates(subject=prop_shape):
             qvs = pg.value(subject=prop_shape, predicate=SH["qualifiedValueShape"])
             type_ = pg.value(subject=qvs, predicate=SH["class"])
             if type_ is None:
                 type_ = pg.value(subject=qvs, predicate=SH["node"])
-            generated_shape += f"{param} rdf:type {type_} .\n"
+            generated_shape += f"{last} rdf:type {type_} .\n"
         return generated_shape, parameters
 
 
@@ -192,5 +219,6 @@ if __name__ == "__main__":
     print(ctx.shapes)
     print(ctx.root_shapes)
     for shape in ctx.root_shapes:
+        print()
         print(shape)
         print(ctx.generate_template(shape))
