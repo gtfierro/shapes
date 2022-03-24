@@ -7,13 +7,14 @@ from typing import List, Tuple, Set, Optional, Union
 from secrets import token_hex
 
 SH = rdflib.Namespace("http://www.w3.org/ns/shacl#")
+MARK = rdflib.Namespace("urn:___mark___#")
 
 
 def gensym(prefix: str) -> str:
     """
     Generate a unique identifier
     """
-    return f"{prefix}_{token_hex(8)}"
+    return MARK[f"{prefix}_{token_hex(8)}"]
 
 
 class PathSet:
@@ -56,9 +57,9 @@ class PathSet:
         last = start
         temp = ""
         for step in self.sequence:
-            temp += f"{last} "
+            temp += f"<{last}> "
             last = gensym("autogen")
-            temp += f"<{step}> {last} .\n"
+            temp += f"<{step}> <{last}> .\n"
         return [([temp], last)]
 
 
@@ -111,15 +112,6 @@ class Context:
                 root_shapes.append(s)
         return root_shapes
 
-    def _node_shape_to_template(self, shape: rdflib.URIRef) -> str:
-        """
-        Generate a template for a node shape.
-        Node shapes have:
-        - a type of the 'target' entity
-        - properties
-        """
-        pass
-
     def add_template(self, name: str, template: str):
         """
         Add a template to the context
@@ -128,7 +120,7 @@ class Context:
 
     def generate_template(self, shape: rdflib.URIRef) -> str:
         """
-        Generate a template for a given shape
+        Generate a template for a given node shape
         """
         parameters = []
         dependencies = []
@@ -139,7 +131,7 @@ class Context:
             if type_prop in g.predicates(subject=shape):
                 type_ = g.value(subject=shape, predicate=type_prop)
                 param = gensym("param")
-                generated_shape += f"{param} rdf:type {type_} .\n"
+                generated_shape += f"<{param}> rdf:type <{type_}> .\n"
                 parameters.append(param)
                 # handle dependencies if SH.targetNode
                 if type_prop == SH.targetNode:
@@ -209,7 +201,7 @@ class Context:
         generated_shape += path
         if SH["class"] in pg.predicates(subject=prop_shape):
             type_ = pg.value(subject=prop_shape, predicate=SH["class"])
-            generated_shape += f"{last} rdf:type {type_} .\n"
+            generated_shape += f"<{last}> rdf:type <{type_}> .\n"
         elif SH["qualifiedValueShape"] in pg.predicates(subject=prop_shape):
             qvs = pg.value(subject=prop_shape, predicate=SH["qualifiedValueShape"])
             type_ = pg.value(subject=qvs, predicate=SH["class"])
@@ -218,7 +210,7 @@ class Context:
                 if type_ is None:
                     # TODO: use _handle_node_shape_list (returns multiple)
                     type_ = self._handle_node_shape_list(qvs, name=prop_shape.split('/')[-1])
-            generated_shape += f"{last} rdf:type {type_} .\n"
+            generated_shape += f"<{last}> rdf:type <{type_}> .\n"
 
         return generated_shape, parameters
 
