@@ -1,5 +1,4 @@
 import rdflib
-from brickschema.namespaces import bind_prefixes
 from collections import defaultdict
 from rdflib.collection import Collection
 from functools import cached_property
@@ -16,6 +15,7 @@ __header__ = """
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 """
+
 
 def gensym(prefix: str) -> str:
     """
@@ -36,7 +36,6 @@ class PathSet:
         for o in self.options:
             s += f" {o}\n|\n"
         return s + ")"
-
 
     def then(self, path: rdflib.URIRef) -> "PathSet":
         """
@@ -59,8 +58,13 @@ class PathSet:
         return n
 
     def paths(self, start) -> List[Tuple[List[str], str]]:
+        """
+        Generate a list of tuples for each path in our PathSet.
+        Each tuple has as the first element a list of the path names and as the second
+        element the final parameter name in the path.
+        """
         if len(self.options) > 0:
-            return chain.from_iterable(p.paths() for p in self.options)
+            return list(chain.from_iterable(p.paths(start) for p in self.options))
         last = start
         temp = ""
         for step in self.sequence:
@@ -146,7 +150,6 @@ class Context:
                     }
                 })
         return res
-
 
     def generate_template(self, shape: rdflib.URIRef) -> List[str]:
         """
