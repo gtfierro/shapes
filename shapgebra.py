@@ -12,6 +12,7 @@ def drop_none(l: List[Optional[Any]]) -> List[Any]:
 
 
 class NodeShape:
+    name: Union[URIRef, BNode]
     properties: List["PropertyShape"]
     target: Optional["NodeShapeTarget"]
     closed: bool
@@ -23,6 +24,7 @@ class NodeShape:
         if node is None:
             return None
         ns = NodeShape()
+        ns.name = node
         ns.target = NodeShapeTarget.parse(graph, node)
         ns.closed = graph.value(node, SH.closed, default=False)
         ns.or_clauses = drop_none([OrClause.parse(graph, oc) for oc in graph.objects(node, SH["or"])])
@@ -31,7 +33,7 @@ class NodeShape:
         return ns
 
     def dump(self, indent=0):
-        print(f"{'  '*indent}NodeShape:")
+        print(f"{'  '*indent}NodeShape {self.name}:")
         if self.target is not None:
             print(f"{'  '*(indent+1)}target:", self.target.dump(indent=indent))
         print(f"{'  '*(indent+1)}closed:", self.closed)
@@ -44,6 +46,7 @@ class NodeShape:
 
 
 class OrClause:
+    name: Union[URIRef, BNode]
     node_shapes: List[NodeShape]
 
     @classmethod
@@ -51,17 +54,19 @@ class OrClause:
         if node is None:
             return None
         oc = OrClause()
+        oc.name = node
         shapes = Collection(graph, node)
         oc.node_shapes = [NodeShape.parse(graph, s) for s in shapes]
         return oc
 
     def dump(self, indent=0):
-        print(f"{'  '*indent}OrClause:")
+        print(f"{'  '*indent}OrClause {self.name}:")
         for ns in self.node_shapes:
             ns.dump(indent=indent+1)
 
 
 class NotClause:
+    name: Union[URIRef, BNode]
     not_shape: NodeShape
 
     @classmethod
@@ -69,15 +74,17 @@ class NotClause:
         if node is None:
             return None
         nc = NotClause()
+        nc.name = node
         nc.not_shape = NodeShape.parse(graph, node)
         return nc
 
     def dump(self, indent=0):
-        print(f"{'  '*indent}NotClause:")
+        print(f"{'  '*indent}NotClause {self.name}:")
         self.not_shape.dump(indent=indent+1)
 
 
 class Path:
+    name: Union[URIRef, BNode]
     predicatePath: Optional[URIRef]
     sequencePath: List["Path"]
     alternativePath: List["Path"]
@@ -100,6 +107,7 @@ class Path:
         if node is None:
             return None
         p = Path()
+        p.name = node
         path = node
         pathlist = Collection(graph, path)
         if graph.value(path, SH.inversePath):
@@ -110,12 +118,13 @@ class Path:
             p.oneOrMorePath = Path.parse(graph, graph.value(path, SH.oneOrMorePath))
         elif graph.value(path, SH.zeroOrMorePath):
             p.zeroOrMorePath = Path.parse(graph, graph.value(path, SH.zeroOrMorePath))
-        elif pathlist is not None:
+        elif len(pathlist) > 0:
+            print('sequence!')
             p.sequencePath = drop_none([Path.parse(graph, p) for p in pathlist])
         elif graph.value(path, SH.alternativePath):
             p.alternativePath = graph.value(path, SH.alternativePath)
         else:
-            p.predicatePath = path
+            p.predicatePath = node
         return p
 
     def dump(self, indent=0):
@@ -140,6 +149,7 @@ class Path:
             print(f"{'  '*(indent+1)}zeroOrMorePath:", self.zeroOrMorePath.dump(indent+1))
 
 class PropertyShape:
+    name: Union[URIRef, BNode]
     path: Path
     minCount: int
     maxCount: int
@@ -156,6 +166,7 @@ class PropertyShape:
         if node is None:
             return None
         ps = PropertyShape()
+        ps.name = node
         ps.path = Path.parse(graph, graph.value(node, SH.path))
         ps.minCount = graph.value(node, SH.minCount)
         ps.maxCount = graph.value(node, SH.maxCount)
@@ -171,9 +182,9 @@ class PropertyShape:
         return ps
 
     def dump(self, indent=0):
-        print(f"{'  '*indent}PropertyShape:")
+        print(f"{'  '*indent}PropertyShape {self.name}:")
         if self.path is not None:
-            print(f"{'  '*(indent+1)}path:", self.path.dump(indent=indent+1))
+            self.path.dump(indent=indent+1)
         if self.minCount is not None:
             print(f"{'  '*(indent+1)}minCount:", self.minCount)
         if self.maxCount is not None:
@@ -187,12 +198,13 @@ class PropertyShape:
         if self.hasNodeKind is not None:
             print(f"{'  '*(indent+1)}hasNodeKind:", self.hasNodeKind)
         if self.matchesNode is not None:
-            print(f"{'  '*(indent+1)}matchesNode:", self.matchesNode.dump(indent=indent+1))
+            self.matchesNode.dump(indent=indent+1)
         if self.qualifiedValueShape is not None:
-            print(f"{'  '*(indent+1)}qualifiedValueShape:", self.qualifiedValueShape.dump(indent=indent+1))
+            self.qualifiedValueShape.dump(indent=indent+1)
 
 
 class QualifiedValueShape:
+    name: Union[URIRef, BNode]
     qualifiedMinCount: int
     qualifiedMaxCount: int
     qualifiedValueShape: Optional[PropertyShape]
@@ -202,11 +214,12 @@ class QualifiedValueShape:
         if node is None:
             return None
         qvs = QualifiedValueShape()
+        qvs.name = node
         qvs.qualifiedValueShape = PropertyShape.parse(graph, node)
         return qvs
 
     def dump(self, indent=0):
-        print(f"{'  '*indent}QualifiedValueShape:")
+        print(f"{'  '*indent}QualifiedValueShape {self.name}:")
         if self.qualifiedMinCount is not None:
             print(f"{'  '*(indent+1)}qualifiedMinCount:", self.qualifiedMinCount)
         if self.qualifiedMaxCount is not None:
@@ -263,4 +276,7 @@ if __name__ == "__main__":
     graph.parse("ASHRAE/G36/4.1-vav-cooling-only/brick-shapes.ttl", format="turtle")
 
     node = parse(graph, G36["vav-cooling-only"])
+    node.dump()
+
+    node = parse(graph, G36["zone-with-temp-sensor"])
     node.dump()
