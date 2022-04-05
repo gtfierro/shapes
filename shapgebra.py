@@ -11,8 +11,27 @@ def drop_none(l: List[Optional[Any]]) -> List[Any]:
     return [x for x in l if x is not None]
 
 
-class NodeShape:
-    name: Union[URIRef, BNode]
+class SHACLNode:
+    _name: Union[URIRef, BNode]
+
+    @property
+    def name(self) -> str:
+        if hasattr(self, "_name") and isinstance(self._name, URIRef):
+            return self._name.n3()
+        return ""
+
+    @classmethod
+    def parse(cls, _: Union[URIRef, BNode, Literal]) -> "SHACLNode":
+        raise NotImplementedError
+
+    def dump(self, _: int) -> None:
+        raise NotImplementedError
+
+    # TODO: some sort of traversal method?
+    # what are some optimizations we can try?
+    # how do I rewrite a subtree?
+
+class NodeShape(SHACLNode):
     properties: List["PropertyShape"]
     target: Optional["NodeShapeTarget"]
     hasClass: Union[URIRef, BNode]
@@ -26,7 +45,7 @@ class NodeShape:
         if node is None:
             return None
         ns = NodeShape()
-        ns.name = node
+        ns._name = node
         ns.target = NodeShapeTarget.parse(graph, node)
         ns.hasClass = graph.value(node, SH["class"])
         ns.matchesNode = NodeShape.parse(graph, graph.value(node, SH["node"]))
@@ -59,8 +78,7 @@ class NodeShape:
             ps.dump(indent=indent + 1)
 
 
-class OrClause:
-    name: Union[URIRef, BNode]
+class OrClause(SHACLNode):
     node_shapes: List[NodeShape]
 
     @classmethod
@@ -70,7 +88,7 @@ class OrClause:
         if node is None:
             return None
         oc = OrClause()
-        oc.name = node
+        oc._name = node
         shapes = Collection(graph, node)
         oc.node_shapes = drop_none([NodeShape.parse(graph, s) for s in shapes])
         return oc
@@ -81,8 +99,7 @@ class OrClause:
             ns.dump(indent=indent + 1)
 
 
-class NotClause:
-    name: Union[URIRef, BNode]
+class NotClause(SHACLNode):
     not_shape: NodeShape
 
     @classmethod
@@ -92,7 +109,7 @@ class NotClause:
         if node is None:
             return None
         nc = NotClause()
-        nc.name = node
+        nc._name = node
         not_shape = NodeShape.parse(graph, node)
         assert not_shape is not None
         nc.not_shape = not_shape
@@ -103,8 +120,7 @@ class NotClause:
         self.not_shape.dump(indent=indent + 1)
 
 
-class Path:
-    name: Union[URIRef, BNode]
+class Path(SHACLNode):
     predicatePath: Optional[URIRef]
     sequencePath: List["Path"]
     alternativePath: List["Path"]
@@ -127,7 +143,7 @@ class Path:
         if node is None:
             return None
         p = Path()
-        p.name = node
+        p._name = node
         path = node
         pathlist = Collection(graph, path)
         if graph.value(path, SH.inversePath):
@@ -169,8 +185,7 @@ class Path:
         print(f"{'  '*indent}Path: {self.rollup()}")
 
 
-class PropertyShape:
-    name: Union[URIRef, BNode]
+class PropertyShape(SHACLNode):
     path: Path
     minCount: int
     maxCount: int
@@ -189,7 +204,7 @@ class PropertyShape:
         if node is None:
             return None
         ps = PropertyShape()
-        ps.name = node
+        ps._name = node
 
         path = Path.parse(graph, graph.value(node, SH.path))
         assert path is not None
@@ -236,8 +251,7 @@ class PropertyShape:
             self.qualifiedValueShape.dump(indent=indent + 1)
 
 
-class QualifiedValueShape:
-    name: Union[URIRef, BNode]
+class QualifiedValueShape(SHACLNode):
     qualifiedMinCount: int
     qualifiedMaxCount: int
     qualifiedValueShape: Optional[NodeShape]
@@ -249,7 +263,7 @@ class QualifiedValueShape:
         if node is None:
             return None
         qvs = QualifiedValueShape()
-        qvs.name = node
+        qvs._name = node
         qvs.qualifiedValueShape = NodeShape.parse(graph, node)
         return qvs
 
@@ -263,7 +277,7 @@ class QualifiedValueShape:
         self.qualifiedValueShape.dump(indent=indent + 1)
 
 
-class NodeShapeTarget:
+class NodeShapeTarget(SHACLNode):
     targetClass: Union[URIRef, BNode]
     targetNode: NodeShape
     targetObjectsOf: URIRef
@@ -313,8 +327,8 @@ if __name__ == "__main__":
     graph = rdflib.Graph()
     graph.parse("ASHRAE/G36/4.1-vav-cooling-only/brick-shapes.ttl", format="turtle")
 
-    # node = parse(graph, G36["vav-cooling-only"])
-    # node.dump()
+    node = parse(graph, G36["vav-cooling-only"])
+    node.dump()
 
     # node = parse(graph, G36["zone-with-temp-sensor"])
     # node.dump()
