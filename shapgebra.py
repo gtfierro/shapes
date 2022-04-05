@@ -127,26 +127,27 @@ class Path:
             p.predicatePath = node
         return p
 
-    def dump(self, indent=0):
-        print(f"{'  '*indent}Path:")
+    def rollup(self) -> str:
         if self.predicatePath is not None:
-            print(f"{'  '*(indent+1)}predicatePath:", self.predicatePath)
-        if self.sequencePath:
-            print(f"{'  '*(indent+1)}sequencePath:")
-            for p in self.sequencePath:
-                p.dump(indent=indent+2)
-        if self.alternativePath:
-            print(f"{'  '*(indent+1)}alternativePath:")
-            for ap in self.alternativePath:
-                ap.dump(indent=indent+2)
-        if self.inversePath is not None:
-            print(f"{'  '*(indent+1)}inversePath:", self.inversePath.dump(indent+1))
-        if self.zeroOrOnePath is not None:
-            print(f"{'  '*(indent+1)}zeroOrOnePath:", self.zeroOrOnePath.dump(indent+1))
-        if self.oneOrMorePath is not None:
-            print(f"{'  '*(indent+1)}oneOrMorePath:", self.oneOrMorePath.dump(indent+1))
-        if self.zeroOrMorePath is not None:
-            print(f"{'  '*(indent+1)}zeroOrMorePath:", self.zeroOrMorePath.dump(indent+1))
+            return self.predicatePath
+        elif self.sequencePath:
+            return '/'.join([p.rollup() for p in self.sequencePath])
+        elif self.alternativePath:
+            return '|'.join([p.rollup() for p in self.alternativePath])
+        elif self.inversePath:
+            return self.inversePath.rollup() + '^'
+        elif self.zeroOrOnePath:
+            return self.zeroOrOnePath.rollup() + '?'
+        elif self.oneOrMorePath:
+            return self.oneOrMorePath.rollup() + '+'
+        elif self.zeroOrMorePath:
+            return self.zeroOrMorePath.rollup() + '*'
+        else:
+            return ''
+
+    def dump(self, indent=0):
+        print(f"{'  '*indent}Path: {self.rollup()}")
+
 
 class PropertyShape:
     name: Union[URIRef, BNode]
@@ -275,8 +276,11 @@ if __name__ == "__main__":
     graph = rdflib.Graph()
     graph.parse("ASHRAE/G36/4.1-vav-cooling-only/brick-shapes.ttl", format="turtle")
 
-    node = parse(graph, G36["vav-cooling-only"])
-    node.dump()
+    # node = parse(graph, G36["vav-cooling-only"])
+    # node.dump()
 
-    node = parse(graph, G36["zone-with-temp-sensor"])
-    node.dump()
+    # node = parse(graph, G36["zone-with-temp-sensor"])
+    # node.dump()
+
+    ps = PropertyShape.parse(graph, G36["window-switch"])
+    ps.dump()
