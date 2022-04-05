@@ -27,9 +27,15 @@ class NodeShape:
         ns.name = node
         ns.target = NodeShapeTarget.parse(graph, node)
         ns.closed = graph.value(node, SH.closed, default=False)
-        ns.or_clauses = drop_none([OrClause.parse(graph, oc) for oc in graph.objects(node, SH["or"])])
-        ns.not_clauses = drop_none([NotClause.parse(graph, nc) for nc in graph.objects(node, SH["not"])])
-        ns.properties = drop_none([PropertyShape.parse(graph, ps) for ps in graph.objects(node, SH.property)])
+        ns.or_clauses = drop_none(
+            [OrClause.parse(graph, oc) for oc in graph.objects(node, SH["or"])]
+        )
+        ns.not_clauses = drop_none(
+            [NotClause.parse(graph, nc) for nc in graph.objects(node, SH["not"])]
+        )
+        ns.properties = drop_none(
+            [PropertyShape.parse(graph, ps) for ps in graph.objects(node, SH.property)]
+        )
         return ns
 
     def dump(self, indent=0):
@@ -38,11 +44,11 @@ class NodeShape:
             print(f"{'  '*(indent+1)}target:", self.target.dump(indent=indent))
         print(f"{'  '*(indent+1)}closed:", self.closed)
         for oc in self.or_clauses:
-            oc.dump(indent=indent+1)
+            oc.dump(indent=indent + 1)
         for nc in self.not_clauses:
-            nc.dump(indent=indent+1)
+            nc.dump(indent=indent + 1)
         for ps in self.properties:
-            ps.dump(indent=indent+1)
+            ps.dump(indent=indent + 1)
 
 
 class OrClause:
@@ -50,7 +56,9 @@ class OrClause:
     node_shapes: List[NodeShape]
 
     @classmethod
-    def parse(cls, graph: rdflib.Graph, node: Union[URIRef, BNode]) -> Optional["OrClause"]:
+    def parse(
+        cls, graph: rdflib.Graph, node: Union[URIRef, BNode]
+    ) -> Optional["OrClause"]:
         if node is None:
             return None
         oc = OrClause()
@@ -62,7 +70,7 @@ class OrClause:
     def dump(self, indent=0):
         print(f"{'  '*indent}OrClause {self.name}:")
         for ns in self.node_shapes:
-            ns.dump(indent=indent+1)
+            ns.dump(indent=indent + 1)
 
 
 class NotClause:
@@ -70,7 +78,9 @@ class NotClause:
     not_shape: NodeShape
 
     @classmethod
-    def parse(cls, graph: rdflib.Graph, node: Union[URIRef, BNode]) -> Optional["NotClause"]:
+    def parse(
+        cls, graph: rdflib.Graph, node: Union[URIRef, BNode]
+    ) -> Optional["NotClause"]:
         if node is None:
             return None
         nc = NotClause()
@@ -80,7 +90,7 @@ class NotClause:
 
     def dump(self, indent=0):
         print(f"{'  '*indent}NotClause {self.name}:")
-        self.not_shape.dump(indent=indent+1)
+        self.not_shape.dump(indent=indent + 1)
 
 
 class Path:
@@ -119,7 +129,7 @@ class Path:
         elif graph.value(path, SH.zeroOrMorePath):
             p.zeroOrMorePath = Path.parse(graph, graph.value(path, SH.zeroOrMorePath))
         elif len(pathlist) > 0:
-            print('sequence!')
+            print("sequence!")
             p.sequencePath = drop_none([Path.parse(graph, p) for p in pathlist])
         elif graph.value(path, SH.alternativePath):
             p.alternativePath = graph.value(path, SH.alternativePath)
@@ -131,19 +141,19 @@ class Path:
         if self.predicatePath is not None:
             return self.predicatePath
         elif self.sequencePath:
-            return '/'.join([p.rollup() for p in self.sequencePath])
+            return "/".join([p.rollup() for p in self.sequencePath])
         elif self.alternativePath:
-            return '|'.join([p.rollup() for p in self.alternativePath])
+            return "|".join([p.rollup() for p in self.alternativePath])
         elif self.inversePath:
-            return self.inversePath.rollup() + '^'
+            return self.inversePath.rollup() + "^"
         elif self.zeroOrOnePath:
-            return self.zeroOrOnePath.rollup() + '?'
+            return self.zeroOrOnePath.rollup() + "?"
         elif self.oneOrMorePath:
-            return self.oneOrMorePath.rollup() + '+'
+            return self.oneOrMorePath.rollup() + "+"
         elif self.zeroOrMorePath:
-            return self.zeroOrMorePath.rollup() + '*'
+            return self.zeroOrMorePath.rollup() + "*"
         else:
-            return ''
+            return ""
 
     def dump(self, indent=0):
         print(f"{'  '*indent}Path: {self.rollup()}")
@@ -163,12 +173,18 @@ class PropertyShape:
     qualifiedValueShape: Optional["QualifiedValueShape"]
 
     @classmethod
-    def parse(cls, graph: rdflib.Graph, node: Union[URIRef, BNode]) -> Optional["PropertyShape"]:
+    def parse(
+        cls, graph: rdflib.Graph, node: Union[URIRef, BNode]
+    ) -> Optional["PropertyShape"]:
         if node is None:
             return None
         ps = PropertyShape()
         ps.name = node
-        ps.path = Path.parse(graph, graph.value(node, SH.path))
+
+        path = Path.parse(graph, graph.value(node, SH.path))
+        assert path is not None
+        ps.path = path
+
         ps.minCount = graph.value(node, SH.minCount)
         ps.maxCount = graph.value(node, SH.maxCount)
         ps.hasValue = graph.value(node, SH.hasValue)
@@ -176,16 +192,22 @@ class PropertyShape:
         ps.hasDatatype = graph.value(node, SH["datatype"])
         ps.hasNodeKind = graph.value(node, SH["nodeKind"])
         ps.matchesNode = NodeShape.parse(graph, graph.value(node, SH["node"]))
-        ps.qualifiedValueShape = QualifiedValueShape.parse(graph, graph.value(node, SH.qualifiedValueShape))
+        ps.qualifiedValueShape = QualifiedValueShape.parse(
+            graph, graph.value(node, SH.qualifiedValueShape)
+        )
         if ps.qualifiedValueShape is not None:
-            ps.qualifiedValueShape.qualifiedMinCount = graph.value(node, SH.qualifiedMinCount)
-            ps.qualifiedValueShape.qualifiedMaxCount = graph.value(node, SH.qualifiedMaxCount)
+            ps.qualifiedValueShape.qualifiedMinCount = graph.value(
+                node, SH.qualifiedMinCount
+            )
+            ps.qualifiedValueShape.qualifiedMaxCount = graph.value(
+                node, SH.qualifiedMaxCount
+            )
         return ps
 
     def dump(self, indent=0):
         print(f"{'  '*indent}PropertyShape {self.name}:")
         if self.path is not None:
-            self.path.dump(indent=indent+1)
+            self.path.dump(indent=indent + 1)
         if self.minCount is not None:
             print(f"{'  '*(indent+1)}minCount:", self.minCount)
         if self.maxCount is not None:
@@ -199,9 +221,9 @@ class PropertyShape:
         if self.hasNodeKind is not None:
             print(f"{'  '*(indent+1)}hasNodeKind:", self.hasNodeKind)
         if self.matchesNode is not None:
-            self.matchesNode.dump(indent=indent+1)
+            self.matchesNode.dump(indent=indent + 1)
         if self.qualifiedValueShape is not None:
-            self.qualifiedValueShape.dump(indent=indent+1)
+            self.qualifiedValueShape.dump(indent=indent + 1)
 
 
 class QualifiedValueShape:
@@ -211,7 +233,9 @@ class QualifiedValueShape:
     qualifiedValueShape: Optional[PropertyShape]
 
     @classmethod
-    def parse(cls, graph: rdflib.Graph, node: URIRef) -> Optional["QualifiedValueShape"]:
+    def parse(
+        cls, graph: rdflib.Graph, node: URIRef
+    ) -> Optional["QualifiedValueShape"]:
         if node is None:
             return None
         qvs = QualifiedValueShape()
@@ -225,7 +249,7 @@ class QualifiedValueShape:
             print(f"{'  '*(indent+1)}qualifiedMinCount:", self.qualifiedMinCount)
         if self.qualifiedMaxCount is not None:
             print(f"{'  '*(indent+1)}qualifiedMaxCount:", self.qualifiedMaxCount)
-        self.qualifiedValueShape.dump(indent=indent+1)
+        self.qualifiedValueShape.dump(indent=indent + 1)
 
 
 class NodeShapeTarget:
@@ -235,7 +259,9 @@ class NodeShapeTarget:
     targetSubjectsOf: URIRef
 
     @classmethod
-    def parse(cls, graph: rdflib.Graph, node: Union[URIRef, BNode]) -> Optional["NodeShapeTarget"]:
+    def parse(
+        cls, graph: rdflib.Graph, node: Union[URIRef, BNode]
+    ) -> Optional["NodeShapeTarget"]:
         if node is None:
             return None
         if graph.value(node, SH.targetClass):
@@ -261,12 +287,12 @@ class NodeShapeTarget:
         if self.targetClass:
             print(f"{'  '*(indent+1)}targetClass:", self.targetClass)
         elif self.targetNode:
-            self.targetNode.dump(indent=indent+1)
+            self.targetNode.dump(indent=indent + 1)
         elif self.targetObjectsOf:
             print(f"{'  '*(indent+1)}targetObjectsOf:", self.targetObjectsOf)
         elif self.targetSubjectsOf:
             print(f"{'  '*(indent+1)}targetSubjectsOf:", self.targetSubjectsOf)
-            
+
 
 def parse(graph: rdflib.Graph, node: Union[URIRef, BNode]) -> NodeShape:
     return NodeShape.parse(graph, node)
