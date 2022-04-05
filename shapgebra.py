@@ -20,7 +20,7 @@ class NodeShape:
     not_clauses: List["NotClause"]
 
     @classmethod
-    def parse(cls, graph: rdflib.Graph, node: URIRef) -> Optional["NodeShape"]:
+    def parse(cls, graph: rdflib.Graph, node: Union[URIRef, BNode]) -> Optional["NodeShape"]:
         if node is None:
             return None
         ns = NodeShape()
@@ -64,7 +64,7 @@ class OrClause:
         oc = OrClause()
         oc.name = node
         shapes = Collection(graph, node)
-        oc.node_shapes = [NodeShape.parse(graph, s) for s in shapes]
+        oc.node_shapes = drop_none([NodeShape.parse(graph, s) for s in shapes])
         return oc
 
     def dump(self, indent=0):
@@ -85,7 +85,9 @@ class NotClause:
             return None
         nc = NotClause()
         nc.name = node
-        nc.not_shape = NodeShape.parse(graph, node)
+        not_shape = NodeShape.parse(graph, node)
+        assert not_shape is not None
+        nc.not_shape = not_shape
         return nc
 
     def dump(self, indent=0):
@@ -134,6 +136,7 @@ class Path:
         elif graph.value(path, SH.alternativePath):
             p.alternativePath = graph.value(path, SH.alternativePath)
         else:
+            assert isinstance(node, URIRef)
             p.predicatePath = node
         return p
 
@@ -249,6 +252,7 @@ class QualifiedValueShape:
             print(f"{'  '*(indent+1)}qualifiedMinCount:", self.qualifiedMinCount)
         if self.qualifiedMaxCount is not None:
             print(f"{'  '*(indent+1)}qualifiedMaxCount:", self.qualifiedMaxCount)
+        assert self.qualifiedValueShape is not None
         self.qualifiedValueShape.dump(indent=indent + 1)
 
 
