@@ -15,6 +15,8 @@ class NodeShape:
     name: Union[URIRef, BNode]
     properties: List["PropertyShape"]
     target: Optional["NodeShapeTarget"]
+    hasClass: Union[URIRef, BNode]
+    matchesNode: Optional["NodeShape"]
     closed: bool
     or_clauses: List["OrClause"]
     not_clauses: List["NotClause"]
@@ -26,6 +28,8 @@ class NodeShape:
         ns = NodeShape()
         ns.name = node
         ns.target = NodeShapeTarget.parse(graph, node)
+        ns.hasClass = graph.value(node, SH["class"])
+        ns.matchesNode = NodeShape.parse(graph, graph.value(node, SH["node"]))
         ns.closed = graph.value(node, SH.closed, default=False)
         ns.or_clauses = drop_none(
             [OrClause.parse(graph, oc) for oc in graph.objects(node, SH["or"])]
@@ -42,6 +46,10 @@ class NodeShape:
         print(f"{'  '*indent}NodeShape {self.name}:")
         if self.target is not None:
             print(f"{'  '*(indent+1)}target:", self.target.dump(indent=indent))
+        if self.hasClass is not None:
+            print(f"{'  '*(indent+1)}hasClass:", self.hasClass)
+        if self.matchesNode is not None:
+            self.matchesNode.dump(indent=indent + 1)
         print(f"{'  '*(indent+1)}closed:", self.closed)
         for oc in self.or_clauses:
             oc.dump(indent=indent + 1)
@@ -131,7 +139,6 @@ class Path:
         elif graph.value(path, SH.zeroOrMorePath):
             p.zeroOrMorePath = Path.parse(graph, graph.value(path, SH.zeroOrMorePath))
         elif len(pathlist) > 0:
-            print("sequence!")
             p.sequencePath = drop_none([Path.parse(graph, p) for p in pathlist])
         elif graph.value(path, SH.alternativePath):
             p.alternativePath = graph.value(path, SH.alternativePath)
@@ -233,7 +240,7 @@ class QualifiedValueShape:
     name: Union[URIRef, BNode]
     qualifiedMinCount: int
     qualifiedMaxCount: int
-    qualifiedValueShape: Optional[PropertyShape]
+    qualifiedValueShape: Optional[NodeShape]
 
     @classmethod
     def parse(
@@ -243,7 +250,7 @@ class QualifiedValueShape:
             return None
         qvs = QualifiedValueShape()
         qvs.name = node
-        qvs.qualifiedValueShape = PropertyShape.parse(graph, node)
+        qvs.qualifiedValueShape = NodeShape.parse(graph, node)
         return qvs
 
     def dump(self, indent=0):
@@ -312,5 +319,8 @@ if __name__ == "__main__":
     # node = parse(graph, G36["zone-with-temp-sensor"])
     # node.dump()
 
-    ps = PropertyShape.parse(graph, G36["window-switch"])
+    # ps = PropertyShape.parse(graph, G36["window-switch"])
+    # ps.dump()
+
+    ps = PropertyShape.parse(graph, G36["zone-temperature2"])
     ps.dump()
