@@ -27,6 +27,7 @@ def all_shapes(graph: rdflib.Graph) -> List[Union[URIRef, BNode]]:
     }"""
     return [x[0] for x in graph.query(q)]
 
+
 class ShapeGraph:
     graph: rdflib.Graph
     nodes: List["SHACLNode"]
@@ -42,6 +43,18 @@ class ShapeGraph:
                 self.nodes.append(node)
 
         for ns in self.graph.subjects(predicate=rdflib.RDF.type, object=rdflib.SH.PropertyShape):
+            assert isinstance(ns, (URIRef, BNode))
+            node = PropertyShape.parse(graph, ns)
+            if node is not None:
+                self.nodes.append(node)
+
+        for ns in self.graph.objects(predicate=rdflib.SH.node):
+            assert isinstance(ns, (URIRef, BNode))
+            node = NodeShape.parse(graph, ns)
+            if node is not None:
+                self.nodes.append(node)
+
+        for ns in self.graph.objects(predicate=rdflib.SH.property):
             assert isinstance(ns, (URIRef, BNode))
             node = PropertyShape.parse(graph, ns)
             if node is not None:
@@ -64,6 +77,7 @@ class ShapeGraph:
             if node._name == key:
                 return node
         raise KeyError(key)
+
 
 class SHACLNode:
     _name: Union[URIRef, BNode]
