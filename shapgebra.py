@@ -17,14 +17,14 @@ def clean_node(node: Union[URIRef, BNode]) -> str:
     return re.split(r'[#:/]', str(node))[-1]
 
 
-def draw_graph(graph: nx.DiGraph):
+def draw_graph(graph: nx.DiGraph, output_file: str = 'dependency_graph.png'):
     ag = nx.nx_agraph.to_agraph(graph)
     ag.layout(prog="dot")
-    #ag.layout(prog="neato")
-    ag.draw("file.png")
+    ag.draw(output_file)
 
-def drop_none(l: List[Optional[Any]]) -> List[Any]:
-    return [x for x in l if x is not None]
+
+def drop_none(inp: List[Optional[Any]]) -> List[Any]:
+    return [x for x in inp if x is not None]
 
 
 def all_shapes(graph: rdflib.Graph) -> List[Union[URIRef, BNode]]:
