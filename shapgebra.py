@@ -1,4 +1,6 @@
+import re
 import rdflib
+import networkx as nx
 import pyshacl
 from rdflib.collection import Collection
 from rdflib import URIRef, BNode, Literal, Namespace
@@ -10,6 +12,16 @@ from collections import deque
 SH = Namespace("http://www.w3.org/ns/shacl#")
 G36 = Namespace("urn:ashrae/g36/4.1/vav-cooling-only/")
 
+
+def clean_node(node: Union[URIRef, BNode]) -> str:
+    return re.split(r'[#:/]', str(node))[-1]
+
+
+def draw_graph(graph: nx.DiGraph):
+    ag = nx.nx_agraph.to_agraph(graph)
+    ag.layout(prog="dot")
+    #ag.layout(prog="neato")
+    ag.draw("file.png")
 
 def drop_none(l: List[Optional[Any]]) -> List[Any]:
     return [x for x in l if x is not None]
@@ -72,6 +84,17 @@ class ShapeGraph:
                 found.add(other._name)
         return list(found)
 
+    @property
+    def dependency_graph(self) -> nx.DiGraph:
+        g = nx.DiGraph()
+        for node in self.nodes:
+            g.add_node(clean_node(node._name))
+            for dep in node.dependencies(self.graph):
+                g.add_edge(clean_node(node._name), clean_node(dep))
+        # remove nodes w/o any dependencies or dependents
+        g.remove_nodes_from(list(nx.isolates(g)))
+        return g
+
     def __getitem__(self, key: Union[URIRef, BNode]) -> "SHACLNode":
         for node in self.nodes:
             if node._name == key:
@@ -108,7 +131,10 @@ class SHACLNode:
         """
         found = set()
         nodes = graph.cbd(self._name).all_nodes()
+
         for node in nodes:
+            if node == self._name:
+                continue
             if graph.query(f"ASK {{ {{ <{node}> a sh:NodeShape }} UNION {{ <{node}> a sh:PropertyShape }} UNION {{ ?x sh:node <{node}> }} UNION {{ ?x sh:property <{node}> }} }}"):
                 assert isinstance(node, (URIRef, BNode))
                 found.add(node)
@@ -442,3 +468,6 @@ if __name__ == "__main__":
     print('dependents')
     for c in sg.dependents(G36["zone-temperature2"]):
         print(c)
+
+    depgraph = sg.dependency_graph
+    draw_graph(depgraph)
