@@ -1,7 +1,11 @@
 import rdflib
+import pyshacl
 from rdflib.collection import Collection
 from rdflib import URIRef, BNode, Literal, Namespace
 from typing import List, Union, Optional, Any
+from collections.abc import Iterable
+from collections import deque
+
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 G36 = Namespace("urn:ashrae/g36/4.1/vav-cooling-only/")
@@ -10,6 +14,56 @@ G36 = Namespace("urn:ashrae/g36/4.1/vav-cooling-only/")
 def drop_none(l: List[Optional[Any]]) -> List[Any]:
     return [x for x in l if x is not None]
 
+
+def all_shapes(graph: rdflib.Graph) -> List[Union[URIRef, BNode]]:
+    q = """SELECT ?s WHERE {
+        { ?s a sh:NodeShape }
+        UNION
+        { ?s a sh:PropertyShape }
+        UNION
+        { ?x sh:node ?s }
+        UNION
+        { ?x sh:property ?s }
+    }"""
+    return [x[0] for x in graph.query(q)]
+
+class ShapeGraph:
+    graph: rdflib.Graph
+    nodes: List["SHACLNode"]
+
+    def __init__(self, graph: rdflib.Graph):
+        self.graph = graph
+        self.nodes = []
+
+        for ns in self.graph.subjects(predicate=rdflib.RDF.type, object=rdflib.SH.NodeShape):
+            assert isinstance(ns, (URIRef, BNode))
+            node = NodeShape.parse(graph, ns)
+            if node is not None:
+                self.nodes.append(node)
+
+        for ns in self.graph.subjects(predicate=rdflib.RDF.type, object=rdflib.SH.PropertyShape):
+            assert isinstance(ns, (URIRef, BNode))
+            node = PropertyShape.parse(graph, ns)
+            if node is not None:
+                self.nodes.append(node)
+
+    def dependencies(self, node: Union[URIRef, BNode], recursive=True) -> List[Union[URIRef, BNode]]:
+        return self[node].dependencies(self.graph, recursive=recursive)
+
+    def dependents(self, node: Union[URIRef, BNode], recursive=True) -> List[Union[URIRef, BNode]]:
+        found = set()
+        for other in self.nodes:
+            if other._name == node:
+                continue
+            if node in other.dependencies(self.graph, recursive=recursive):
+                found.add(other._name)
+        return list(found)
+
+    def __getitem__(self, key: Union[URIRef, BNode]) -> "SHACLNode":
+        for node in self.nodes:
+            if node._name == key:
+                return node
+        raise KeyError(key)
 
 class SHACLNode:
     _name: Union[URIRef, BNode]
@@ -21,7 +75,7 @@ class SHACLNode:
         return ""
 
     @classmethod
-    def parse(cls, _: Union[URIRef, BNode, Literal]) -> "SHACLNode":
+    def parse(cls, graph: rdflib.Graph, node: Union[URIRef, BNode, Literal]) -> "SHACLNode":
         raise NotImplementedError
 
     def dump(self, _: int) -> None:
@@ -30,6 +84,30 @@ class SHACLNode:
     # TODO: some sort of traversal method?
     # what are some optimizations we can try?
     # how do I rewrite a subtree?
+
+    # TODO: find redundant shapes
+
+    def dependencies(self, graph: rdflib.Graph, recursive=True) -> List[Union[URIRef, BNode]]:
+        """
+        Return all shapes (node or property) that this shape depends on w/n the given graph.
+        If recursive is True, then also yield all shapes that depend on shapes that depend on this shape.
+        """
+        found = set()
+        nodes = graph.cbd(self._name).all_nodes()
+        for node in nodes:
+            if graph.query(f"ASK {{ {{ <{node}> a sh:NodeShape }} UNION {{ <{node}> a sh:PropertyShape }} UNION {{ ?x sh:node <{node}> }} UNION {{ ?x sh:property <{node}> }} }}"):
+                assert isinstance(node, (URIRef, BNode))
+                found.add(node)
+        if recursive:
+            stack = deque(found)
+            while len(stack) > 0:
+                node = stack.pop()
+                if node in found:
+                    continue
+                found.add(node)
+                stack.extend(graph.cbd(node).all_nodes())
+        return list(found)
+
 
 class NodeShape(SHACLNode):
     properties: List["PropertyShape"]
@@ -97,6 +175,7 @@ class OrClause(SHACLNode):
         print(f"{'  '*indent}OrClause {self.name}:")
         for ns in self.node_shapes:
             ns.dump(indent=indent + 1)
+
 
 
 class NotClause(SHACLNode):
@@ -250,7 +329,6 @@ class PropertyShape(SHACLNode):
         if self.qualifiedValueShape is not None:
             self.qualifiedValueShape.dump(indent=indent + 1)
 
-
 class QualifiedValueShape(SHACLNode):
     qualifiedMinCount: int
     qualifiedMaxCount: int
@@ -326,6 +404,7 @@ def parse(graph: rdflib.Graph, node: Union[URIRef, BNode]) -> NodeShape:
 if __name__ == "__main__":
     graph = rdflib.Graph()
     graph.parse("ASHRAE/G36/4.1-vav-cooling-only/brick-shapes.ttl", format="turtle")
+    pyshacl.validate(graph, advanced=True, inference='rdfs', abort_on_first=False, allow_warnings=True, js=True)
 
     node = parse(graph, G36["vav-cooling-only"])
     node.dump()
@@ -338,3 +417,14 @@ if __name__ == "__main__":
 
     ps = PropertyShape.parse(graph, G36["zone-temperature2"])
     ps.dump()
+
+    sg = ShapeGraph(graph)
+    print(sg.nodes)
+    zt = sg[G36["zone-temperature2"]]
+    print(zt)
+    print('dependencies')
+    for c in sg.dependencies(G36["zone-temperature2"]):
+        print(c)
+    print('dependents')
+    for c in sg.dependents(G36["zone-temperature2"]):
+        print(c)
