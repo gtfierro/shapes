@@ -11,6 +11,16 @@ from collections import deque
 
 SH = Namespace("http://www.w3.org/ns/shacl#")
 G36 = Namespace("urn:ashrae/g36/4.1/vav-cooling-only/")
+PARAM = rdflib.Namespace("urn:__PARAM__/")
+
+TreeNode = Union["SHACLNode", URIRef, BNode]
+
+
+def new_counter():
+    i = 0
+    while True:
+        yield i
+        i += 1
 
 
 def clean_node(node: Union[URIRef, BNode]) -> str:
@@ -37,7 +47,16 @@ def all_shapes(graph: rdflib.Graph) -> List[Union[URIRef, BNode]]:
         UNION
         { ?x sh:property ?s }
     }"""
-    return [x[0] for x in graph.query(q)]
+    return [x[0] for x in graph.query(q) if isinstance(x, (tuple, list))]
+
+
+counter = new_counter()
+
+
+def gensym(name: Optional[str]) -> rdflib.URIRef:
+    if name is None:
+        name = ""
+    return PARAM[f"{name}{next(counter)}"]
 
 
 class ShapeGraph:
@@ -124,6 +143,9 @@ class SHACLNode:
 
     # TODO: find redundant shapes
 
+    def children(self) -> Iterable["SHACLNode"]:
+        raise NotImplementedError
+
     def dependencies(self, graph: rdflib.Graph, recursive=True) -> List[Union[URIRef, BNode]]:
         """
         Return all shapes (node or property) that this shape depends on w/n the given graph.
@@ -195,6 +217,20 @@ class NodeShape(SHACLNode):
         for ps in self.properties:
             ps.dump(indent=indent + 1)
 
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        if self.target is not None:
+            yield self.target
+        if self.hasClass is not None:
+            yield self.hasClass
+        if self.matchesNode is not None:
+            yield self.matchesNode
+        for oc in self.or_clauses:
+            yield oc
+        for nc in self.not_clauses:
+            yield nc
+        for ps in self.properties:
+            yield ps
+
 
 class OrClause(SHACLNode):
     node_shapes: List[NodeShape]
@@ -216,6 +252,9 @@ class OrClause(SHACLNode):
         for ns in self.node_shapes:
             ns.dump(indent=indent + 1)
 
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        for ns in self.node_shapes:
+            yield ns
 
 
 class NotClause(SHACLNode):
@@ -237,6 +276,9 @@ class NotClause(SHACLNode):
     def dump(self, indent=0):
         print(f"{'  '*indent}NotClause {self.name}:")
         self.not_shape.dump(indent=indent + 1)
+
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        yield self.not_shape
 
 
 class Path(SHACLNode):
@@ -302,6 +344,25 @@ class Path(SHACLNode):
 
     def dump(self, indent=0):
         print(f"{'  '*indent}Path: {self.rollup()}")
+
+    # TODO: what is useful way to represent this?
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        if self.predicatePath is not None:
+            yield self.predicatePath
+        if self.sequencePath:
+            for p in self.sequencePath:
+                yield p
+        if self.alternativePath:
+            for p in self.alternativePath:
+                yield p
+        if self.inversePath is not None:
+            yield self.inversePath
+        if self.zeroOrOnePath is not None:
+            yield self.zeroOrOnePath
+        if self.oneOrMorePath is not None:
+            yield self.oneOrMorePath
+        if self.zeroOrMorePath is not None:
+            yield self.zeroOrMorePath
 
 
 class PropertyShape(SHACLNode):
@@ -369,6 +430,19 @@ class PropertyShape(SHACLNode):
         if self.qualifiedValueShape is not None:
             self.qualifiedValueShape.dump(indent=indent + 1)
 
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        if self.path is not None:
+            yield self.path
+        if self.hasDatatype is not None:
+            yield self.hasDatatype
+        if self.hasClass is not None:
+            yield self.hasClass
+        if self.matchesNode is not None:
+            yield self.matchesNode
+        if self.qualifiedValueShape is not None:
+            yield self.qualifiedValueShape
+
+
 class QualifiedValueShape(SHACLNode):
     qualifiedMinCount: int
     qualifiedMaxCount: int
@@ -393,6 +467,10 @@ class QualifiedValueShape(SHACLNode):
             print(f"{'  '*(indent+1)}qualifiedMaxCount:", self.qualifiedMaxCount)
         assert self.qualifiedValueShape is not None
         self.qualifiedValueShape.dump(indent=indent + 1)
+
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        if self.qualifiedValueShape is not None:
+            yield self.qualifiedValueShape
 
 
 class NodeShapeTarget(SHACLNode):
@@ -436,8 +514,19 @@ class NodeShapeTarget(SHACLNode):
         elif self.targetSubjectsOf:
             print(f"{'  '*(indent+1)}targetSubjectsOf:", self.targetSubjectsOf)
 
+    def children(self) -> Iterable[Union["SHACLNode", URIRef, BNode]]:
+        if self.targetClass:
+            yield self.targetClass
+        elif self.targetNode:
+            yield self.targetNode
+        elif self.targetObjectsOf:
+            yield self.targetObjectsOf
+        elif self.targetSubjectsOf:
+            yield self.targetSubjectsOf
 
-def parse(graph: rdflib.Graph, node: Union[URIRef, BNode]) -> NodeShape:
+
+
+def parse(graph: rdflib.Graph, node: Union[URIRef, BNode]) -> Optional[NodeShape]:
     return NodeShape.parse(graph, node)
 
 
@@ -447,6 +536,7 @@ if __name__ == "__main__":
     pyshacl.validate(graph, advanced=True, inference='rdfs', abort_on_first=False, allow_warnings=True, js=True)
 
     node = parse(graph, G36["vav-cooling-only"])
+    assert node is not None
     node.dump()
 
     # node = parse(graph, G36["zone-with-temp-sensor"])
