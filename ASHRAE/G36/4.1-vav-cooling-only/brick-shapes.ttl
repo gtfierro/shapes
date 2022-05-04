@@ -9,13 +9,12 @@
 
 :vav-cooling-only a sh:NodeShape, owl:Class ;
     sh:class brick:VAV ;
-    sh:or ( :box-damper-position1 :box-damper-position2 ) ;
+    sh:node :box-damper-position, :zone-temperature, :occupancy-sensor, :zone-co2-level ;
     sh:property :discharge-airflow, :window-switch ;
-    sh:or ( :zone-temperature1 :zone-temperature2 ) ;
-    sh:or ( :occupancy-sensor1 :occupancy-sensor2 ) ;
-    sh:or ( :zone-co2-level1 :zone-co2-level2 ) ;
 .
 
+:box-damper-position a sh:NodeShape ;
+    sh:or ( :box-damper-position1 :box-damper-position2 ) .
 
 :box-damper-position1 a sh:PropertyShape ;
         sh:path brick:hasPoint ;
@@ -40,6 +39,9 @@
     sh:qualifiedValueShape [ sh:class brick:Discharge_Air_Flow_Sensor ] ;
     sh:qualifiedMinCount 1 ;
 .
+
+:zone-temperature a sh:NodeShape ;
+    sh:or ( :zone-temperature1 :zone-temperature2 ) .
 
 :zone-temperature1 a sh:PropertyShape ;
     sh:path brick:hasPoint ;
@@ -66,6 +68,8 @@
     ] ;
 .
 
+:occupancy-sensor a sh:NodeShape ;
+    sh:or ( :occupancy-sensor1 :occupancy-sensor2 ) .
 :occupancy-sensor1 a sh:PropertyShape ;
     sh:path brick:hasPoint ;
     sh:qualifiedValueShape [ sh:class brick:Occupancy_Sensor ] ;
@@ -109,6 +113,8 @@
     ] ;
 .
 
+:zone-co2-level ;
+    sh:or ( :zone-co2-level1 :zone-co2-level2 ) .
 :zone-co2-level1  a sh:PropertyShape ;
     sh:path brick:hasPoint ;
     sh:qualifiedValueShape [ sh:class brick:CO2_Level_Sensor ] ;
